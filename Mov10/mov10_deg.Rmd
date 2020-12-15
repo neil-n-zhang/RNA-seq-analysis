@@ -1,0 +1,502 @@
+---
+title: "RNA-seq differential gene expression analysis of MOV10 knock-down or overexpression in HEK293F cells"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(DESeq2)
+library(tidyverse)
+library(RColorBrewer)
+library(pheatmap)
+library(DEGreport)
+library(tximport)
+library(ggplot2)
+library(ggrepel)
+library(DOSE)
+library(pathview)
+library(clusterProfiler)
+library(gridExtra)
+```
+
+##Read Salmon result
+
+```{r}
+## List all directories containing Salmon output data  
+samples <- list.files(path = "D:/RNASeq/Mov10/data/salmon", full.names = T, pattern="salmon")
+
+## Obtain a vector of all filenames including the path
+files <- file.path(samples, "quant.sf")
+
+## Since all quant files have the same name it is useful to have names for each element
+names(files) <- str_replace(samples, "D:/RNASeq/Mov10/data/salmon/", "") %>% 
+                str_replace(".salmon", "")
+```
+
+##Read annotation file
+
+```{r}
+tx2gene <- readRDS("D:/RNASeq/Mov10/data/tx2gene_grch38_ens101.rds")
+```
+
+#Import data from multiple samples, convert normalized TPM to non-normalized count estimates for performing DESeq2 analysis using tximport package
+
+```{r}
+txi <- tximport(files, type="salmon", tx2gene=tx2gene[,c("tx_id", "gene_id")], countsFromAbundance="lengthScaledTPM")
+```
+
+```{r}
+data <- txi$counts %>% 
+  round() %>% 
+  data.frame()
+```
+
+```{r}
+#metadata
+meta=data.frame(sampletype=c(rep("control",3),rep("MOV10_knockdown", 2), rep("MOV10_overexpression", 3)),row.names = colnames(txi$counts))
+```
+
+```{r}
+ggplot(data)+
+  geom_histogram(aes(x=Mov10_oe_1), stat = "bin",bins = 200)+
+  xlab("Raw expression counts") +
+  ylab("Number of genes")
+```
+
+###Gene expression variance is correlated with expression level
+
+```{r}
+mean_counts <- apply(data[,6:8], 1, mean)        #The second argument '1' of 'apply' function indicates the function being applied to rows. Use '2' if applied to columns 
+variance_counts <- apply(data[,6:8], 1, var)
+df <- data.frame(mean_counts, variance_counts)
+
+ggplot(df) +
+        geom_point(aes(x=mean_counts, y=variance_counts)) + 
+        scale_y_log10(limits = c(1,1e9)) +
+        scale_x_log10(limits = c(1,1e9)) +
+        geom_abline(intercept = 0, slope = 1, color="red")
+```
+
+```{r}
+### Check that sample names match in both files
+all(colnames(txi$counts) %in% rownames(meta))
+all(colnames(txi$counts) == rownames(meta))
+
+#a=data[,row.names(meta)] reorder the data frame if necessary
+```
+
+##Count Normalization
+####Step 1: Estimate size factors
+####Step 2: Estimate gene-wise dispersion
+####Step 3: Fit curve to gene-wise dispersion estimates
+####Step 4: Shrink gene-wise dispersion estimates toward the values predicted by the curve
+#####For the significant test, we need to know gene expression variance within replicates. However, the small sample size makes the variance estimation difficult. DeSeq adjust dispersion (dispersion accounts for a gene's variance and mean expression level) estimates using information from all genes with the similar expression level (maximum a posteriori probability (MAP) estimate).
+
+```{r}
+#design formula assigns sampletype as the major source of variation in the data
+dds <- DESeqDataSetFromTximport(txi, colData = meta, design = ~ sampletype)
+#View(counts(dds))
+```
+
+```{r}
+dds <- DESeq(dds)
+sizeFactors(dds)
+normalized_counts <- counts(dds, normalized=TRUE)
+```
+
+```{r}
+write.table(normalized_counts, file="mov10_normalized_counts.txt", sep="\t", quote=F, col.names=NA)
+```
+
+##Data QC: check whether samples of the same condition are clustered together
+
+```{r}
+#normalized counts using regularized log transform (rlog) for PCA
+rld <- rlog(dds, blind=TRUE)
+### Plot PCA 
+plotPCA(rld, intgroup="sampletype")
+```
+
+```{r}
+ # Input is a matrix of log transformed values
+ rld_mat <- assay(rld)
+ pca <- prcomp(t(rld_mat))
+
+ # Create data frame with metadata and PC3 and PC4 values for input to ggplot
+ df <- cbind(meta, pca$x)
+ ggplot(df) + geom_point(aes(x=PC3, y=PC4, color = sampletype))
+```
+
+###Hierarchical Clustering
+
+```{r}
+### Extract the rlog matrix from the object
+rld_mat <- assay(rld) 
+rld_cor <- cor(rld_mat)    ## cor() is a base R function
+
+head(rld_cor)
+```
+
+```{r}
+pheatmap(rld_cor, annotation = meta)
+```
+
+####Data should be arround the fitted curve, dispersion should decrease with increasing normalized counts
+
+```{r}
+## Plot dispersion estimates
+plotDispEsts(dds)
+```
+
+###Find the differentially expressed genes between mov10 overexpression and control
+
+```{r}
+resultsNames(dds)
+```
+
+####Shrink the fold change to zero if the gene count is low or the gene has a high dispersion. This dones't change the number of significant genes.
+
+```{r}
+contrast_oe <- c("sampletype", "MOV10_overexpression", "control")
+
+res_tableOE_unshrunken <- results(dds, contrast=contrast_oe, alpha = 0.05)
+
+# Apply fold change shrinkage
+res_tableOE <- lfcShrink(dds, "sampletype_MOV10_overexpression_vs_control", res=res_tableOE_unshrunken,type = "apeglm")
+```
+
+```{r}
+class(res_tableOE_unshrunken)
+mcols(res_tableOE_unshrunken, use.names=T)
+```
+
+```{r}
+## Summarize results
+summary(res_tableOE, alpha = 0.05)
+```
+
+####MA plot, should see the significant genes (colored) along the whole x-axis.
+
+```{r}
+plotMA(res_tableOE_unshrunken, ylim=c(-2,2))
+```
+
+```{r}
+plotMA(res_tableOE, ylim=c(-2,2))
+```
+
+```{r}
+## Define contrasts, extract results table and shrink log2 fold changes
+contrast_kd <-  c("sampletype", "MOV10_knockdown", "control")
+
+#alpha is the value of the indepdendent filtering, filter out part of genes before the significant test
+#use the Wald test by default
+res_tableKD <- results(dds, contrast=contrast_kd, alpha = 0.05)
+
+res_tableKD <- lfcShrink(dds, "sampletype_MOV10_knockdown_vs_control", res=res_tableKD)
+```
+
+
+```{r}
+padj.cutoff=0.05
+res_tableOE_tb <- res_tableOE %>%
+  data.frame() %>%
+  rownames_to_column(var="gene") %>% 
+  as_tibble()
+sigOE <- res_tableOE_tb %>%
+        filter(padj < padj.cutoff)
+sigOE
+```
+
+```{r}
+res_tableKD_tb <- res_tableKD %>%
+  data.frame() %>%
+  rownames_to_column(var="gene") %>% 
+  as_tibble()
+  
+sigKD <- res_tableKD_tb %>%
+        filter(padj < padj.cutoff)
+sigKD
+```
+
+##Data visualization
+
+```{r}
+mov10_meta = meta%>%rownames_to_column(var='samplename')%>%as_tibble()
+
+normalized_counts = normalized_counts %>% 
+  data.frame() %>% rownames_to_column(var='gene')
+
+grch38annot = tx2gene%>%select(gene_id,symbol)%>%distinct()
+
+normalized_counts <- merge(normalized_counts, grch38annot, by.x="gene", by.y="gene_id")
+
+normalized_counts <- normalized_counts %>%
+                     as_tibble()
+  
+normalized_counts 
+```
+
+###Plot expression of a single gene
+
+```{r}
+grch38annot[grch38annot$symbol == "MOV10", "gene_id"]
+
+```
+
+```{r}
+# Save plotcounts to a data frame object
+d <- plotCounts(dds, gene="ENSG00000155363", intgroup="sampletype", returnData=TRUE)
+
+
+# Plot the MOV10 normalized counts, using the samplenames (rownames(d) as labels)
+ggplot(d, aes(x = sampletype, y = count, color = sampletype)) + 
+    geom_point(position=position_jitter(w = 0.1,h = 0)) +
+    geom_text_repel(aes(label = rownames(d))) + 
+    theme_bw() +
+    ggtitle("MOV10") +
+    theme(plot.title = element_text(hjust = 0.5))
+```
+
+###Heatmap
+
+```{r}
+norm_OEsig <- normalized_counts[,c(1:4,7:9)] %>% 
+              filter(gene %in% sigOE$gene)  
+
+### Set a color palette
+heat_colors <- brewer.pal(6, "YlOrRd")
+
+### Run pheatmap using the metadata data frame for the annotation
+pheatmap(norm_OEsig[2:7], 
+    color = heat_colors, 
+    cluster_rows = T, 
+    show_rownames = F,
+    annotation = meta, 
+    border_color = NA, 
+    fontsize = 10, 
+    scale = "row", 
+    fontsize_row = 10, 
+    height = 20)
+```
+
+###Volcano plot
+
+```{r}
+res_tableOE_tb <- res_tableOE_tb %>% 
+                  mutate(threshold_OE = padj < 0.05 & abs(log2FoldChange) >= 0.58) %>% left_join(grch38annot, by=c("gene" = "gene_id")) %>% 
+  mutate(genelabels = "")%>% arrange(padj)
+
+#label the name of the top 10 siginicant genes
+res_tableOE_tb$genelabels[1:10] <- as.character(res_tableOE_tb$symbol[1:10])
+```
+
+```{r}
+ggplot(res_tableOE_tb, aes(x = log2FoldChange, y = -log10(padj))) +
+    geom_point(aes(colour = threshold_OE)) +
+    geom_text_repel(aes(label = genelabels)) +
+    ggtitle("Mov10 overexpression") +
+    xlab("log2 fold change") + 
+    ylab("-log10 adjusted p-value") +
+    theme(legend.position = "none",
+          plot.title = element_text(size = rel(1.5), hjust = 0.5),
+          axis.title = element_text(size = rel(1.25))) 
+```
+
+###Likelihood ratio test (LRT): evaluate expression change across more than two conditions
+####Build models with the factor (sample type in this example) and without the factor then calculate the ratio of their likelihoods. 
+
+```{r}
+# The full model was specified previously with the `design = ~ sampletype`:
+# dds <- DESeqDataSetFromTximport(txi, colData = meta, ~ sampletype)
+
+# ~1 means only consider the intercept for the reduced model
+# Likelihood ratio test
+dds_lrt <- DESeq(dds, test="LRT", reduced = ~ 1)
+res_LRT <- results(dds_lrt)
+```
+
+
+```{r}
+# Create a tibble for LRT results
+res_LRT_tb <- res_LRT %>%
+  data.frame() %>%
+  rownames_to_column(var="gene") %>% 
+  as_tibble()
+
+# Subset to return genes with padj < 0.05
+sigLRT_genes <- res_LRT_tb %>% 
+  filter(padj < padj.cutoff)
+
+# Get number of significant genes
+nrow(sigLRT_genes)
+
+# Compare to numbers we had from Wald test
+nrow(sigOE)
+nrow(sigKD)
+```
+
+####Explore gene clusters showing a certain pattern among different samples
+
+```{r}
+meta$sampletype=factor(meta$sampletype)
+
+clustering_sig_genes <- sigLRT_genes %>%
+  arrange(padj) %>%
+  head(n=1000)
+
+
+# Obtain rlog values for those significant genes
+cluster_rlog <- rld_mat[clustering_sig_genes$gene, ]
+# Use the `degPatterns` function from the 'DEGreport' package to show gene clusters across sample groups
+clusters <- degPatterns(cluster_rlog, metadata = meta, time = "sampletype", col=NULL)
+```
+
+```{r}
+# What type of data structure is the `clusters` output?
+class(clusters)
+
+# Let's see what is stored in the `df` component
+head(clusters$df)
+```
+
+```{r}
+# Extract the Group 1 genes
+cluster_groups <- clusters$df
+group1 <- clusters$df %>%
+          filter(cluster == 1)
+```
+
+##Functional analysis
+###GO enrichment analysis using clusterProfiler
+
+```{r}
+#org.Hs.eg.db: Genome wide annotation for Human
+library(org.Hs.eg.db)
+## Create background dataset for hypergeometric testing using all genes tested for significance in the results                 
+allOE_genes <- as.character(res_tableOE_tb$gene)
+
+## Extract significant results
+sigOE <- dplyr::filter(res_tableOE_tb, padj < 0.05)
+
+sigOE_genes <- as.character(sigOE$gene)
+
+## Run GO enrichment analysis 
+ego <- enrichGO(gene = sigOE_genes, 
+                universe = allOE_genes,
+                keyType = "ENSEMBL",
+                OrgDb = org.Hs.eg.db, 
+                ont = "BP", 
+                pAdjustMethod = "BH", 
+                qvalueCutoff = 0.05, 
+                readable = TRUE)
+```
+
+```{r}
+## Output results from GO analysis to a table
+cluster_summary <- data.frame(ego)
+
+write.csv(cluster_summary, "clusterProfiler_Mov10oe.csv")
+```
+
+```{r,fig.height=12,fig.width=8}
+## Dotplot 
+dotplot(ego, showCategory=20)
+```
+
+###Gene set enrichment analysis: using foldchange of all genes within the predifined gene set, rather than only the significant genes as in GO enrichment analysis
+
+```{r}
+res_ids <- inner_join(res_tableOE_tb, tx2gene[,c('gene_id','entrezid')], by=c("gene"="gene_id"))  %>%
+  dplyr::filter(entrezid != "NA")
+
+res_ids <- res_ids[which(duplicated(res_ids$entrezid) == F), ]
+
+## Extract the foldchanges
+foldchanges <- res_ids$log2FoldChange
+
+## Name each fold change with the corresponding Entrez ID
+names(foldchanges) <- res_ids$entrezid
+
+## Sort fold changes in decreasing order
+foldchanges <- sort(foldchanges, decreasing = TRUE)
+```
+
+```{r}
+## GSEA using gene sets from KEGG pathways
+gseaKEGG <- gseKEGG(geneList = foldchanges, # ordered named vector of fold changes (Entrez IDs are the associated names)
+              organism = "hsa", # supported organisms listed below
+              minGSSize = 20, # minimum gene set size (# genes in set) - change to test more sets or recover sets with fewer # genes
+              pvalueCutoff = 0.05, # padj cutoff value
+              verbose = FALSE)
+
+## Extract the GSEA results
+gseaKEGG_results <- gseaKEGG@result
+```
+
+```{r fig.width=8,fig.height=6}
+## Plot the GSEA plot for a single enriched pathway, `hsa03040`
+# Within the pathway, some genes are inhibited, others are activated. But more are inhibited than activated.
+gseaplot(gseaKEGG, geneSetID = 'hsa03013')
+```
+
+##Check the correlation between RNA-seq result and iCLIP-seq result
+
+```{r}
+library(readxl)
+res_tableOE_filtered = res_tableOE_tb[!is.na(res_tableOE_tb$padj),]
+sigOE_up = sigOE[sigOE$log2FoldChange>0,]
+sigOE_down = sigOE[sigOE$log2FoldChange<0,]
+
+iclip=read_xls("D:/RNASeq/Mov10/data/iCLIPseq/iCLIPseq_3UTR.xls")
+
+iclip$gene=map(strsplit(iclip$gene, split = "/"), 1)%>%unlist()
+```
+
+```{r}
+icliptarget_all=inner_join(iclip,res_tableOE_filtered, by = c("gene" = "symbol"))
+icliptarget_all_up=inner_join(iclip,sigOE_up, by = c("gene" = "symbol"))
+icliptarget_all_down=inner_join(iclip,sigOE_down, by = c("gene" = "symbol"))
+
+allgene_n=dim(res_tableOE_filtered)[1]
+allgene_up_n=dim(sigOE_up)[1]
+allgene_down_n=dim(sigOE_down)[1]
+
+icliptarget_n=dim(icliptarget_all)[1]
+icliptarget_up_n=dim(icliptarget_all_up)[1]
+icliptarget_down_n=dim(icliptarget_all_down)[1]
+
+total_pc=data.frame(percentage=c(allgene_up_n/allgene_n, allgene_down_n/allgene_n,1-allgene_up_n/allgene_n-allgene_down_n/allgene_n),
+                    change=c('Increased', "Decreased","No change"))
+iclip_pc=data.frame(percentage=c(icliptarget_up_n/icliptarget_n, icliptarget_down_n/icliptarget_n, 1-icliptarget_up_n/icliptarget_n-icliptarget_down_n/icliptarget_n),
+                    change=c('Increased', "Decreased","No change"))
+```
+
+####We can see that a higher percentage of Mov10 target genes identified by iCLIPseq is inhibited by Mov10 overexpression
+
+```{r}
+p1=ggplot(total_pc, aes(x="", y=percentage, fill=change))+geom_bar(width = 1, stat = "identity")+coord_polar("y", start=0)+
+  theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.border = element_blank(),
+  panel.grid=element_blank(),
+  axis.ticks = element_blank(),
+  plot.title=element_text(size=14, face="bold")
+  )+ggtitle('RNA-seq total changes')
+
+p2=ggplot(iclip_pc, aes(x="", y=percentage, fill=change))+geom_bar(width = 1, stat = "identity")+coord_polar("y", start=0)+
+  theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.border = element_blank(),
+  panel.grid=element_blank(),
+  axis.ticks = element_blank(),
+  plot.title=element_text(size=14, face="bold")
+  )+ggtitle("3'UTR CLIP targets")
+grid.arrange(p1, p2, ncol=2)
+```
+

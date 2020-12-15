@@ -1,0 +1,83 @@
+---
+title: "Generate annotation file for mapping between ENST ID, ENSG ID and gene symbol"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE}
+library(AnnotationHub)
+library(ensembldb)
+library(tidyverse)
+library(purrr)
+# Connect to AnnotationHub
+ah <- AnnotationHub()
+```
+
+```{r}
+ah
+```
+
+##Search for human data using EnsDb package.
+
+```{r}
+human_ens <- query(ah, c("Homo sapiens", "EnsDb"))
+human_ens
+```
+
+##Use the latest version of Ensembl Genomes
+
+```{r}
+human_ens <- human_ens[["AH83216"]]
+```
+
+```{r}
+# Extract gene-level information
+hgene=genes(human_ens, return.type = "data.frame")
+# Extract transcript-level information
+htranscript=transcripts(human_ens, return.type = "data.frame")
+# Extract exon-level information
+#hexon=exons(human_ens, return.type = "data.frame")
+```
+
+##There are many Ensembl identifiers that map to more than one Entrez (NCBI) identifier.
+
+```{r}
+class(hgene$entrezid)
+length(which(map(hgene$entrezid,length) > 1))
+```
+
+##Keep the first identifier for these multiple mapping cases.
+
+```{r}
+hgene$entrezid <- map(hgene$entrezid,1) %>%  unlist()
+```
+
+##The records without gene name and genes corresponding to multiple records.
+
+```{r}
+length(which(is.na(hgene$symbol)))
+sum(duplicated(hgene$symbol))
+```
+
+##Generate the mapping from transcript id to gene id and gene symbol
+
+```{r}
+txdb=htranscript%>%dplyr::select(tx_id,gene_id)
+
+#remove Locus Reference Genomic records, only keep ENST
+txdb=txdb[grep("ENST", txdb$tx_id),]
+
+genedb=hgene%>%dplyr::select(gene_id, symbol,entrezid)
+
+annotations <- inner_join(txdb, genedb)
+
+```
+
+```{r}
+saveRDS(annotations,'tx2gene_grch38_ens101.rds')
+```
+
+
