@@ -1,0 +1,14 @@
+{
+    "salmon_version": "1.3.0",
+    "index": "/home/neil/bioinfo_tools/Reference/MusGRCm38CA9_index",
+    "libType": "A",
+    "mates1": "/home/neil/CA9/raw_data/SRR9026443/SRR9026443_1.fastq.gz",
+    "mates2": "/home/neil/CA9/raw_data/SRR9026443/SRR9026443_2.fastq.gz",
+    "threads": "8",
+    "validateMappings": [],
+    "output": "SRR9026443",
+    "seqBias": [],
+    "useVBOpt": [],
+    "numBootstraps": "30",
+    "auxDir": "aux_info"
+}

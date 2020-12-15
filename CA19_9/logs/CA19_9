@@ -1,0 +1,54 @@
+
+
+1. Download sequencing results (FastQ) from ENA: https://www.ebi.ac.uk/ena/browser/view/PRJNA541770
+
+Run FastQC for quality control
+$ fastqc -t 6 $(find | grep '.fastq')
+
+
+2. Download transcriptome reference from Ensembl: ftp://ftp.ensembl.org/pub/release-101/fasta/mus_musculus/cdna/
+Mus_musculus.GRCm38.cdna.all.fa.gz
+
+3. Get cDNA sequence for transgenes
+cDNA for β3GALT5(ENST00000380620.8, ENST00000475838.1, ENST00000380618.5, ENST00000398714.3, ENST00000615480.4, ENST00000615480.4), FUT3(ENST00000458379.6, ENST00000458379.6, ENST00000303225.10, ENST00000589620.5, ENST00000589620.5, ENST00000587048.1, ENST00000587048.1, ENST00000585715.1, ENST00000587183.1, ENST00000588539.1) from http://www.ensembl.org/biomart/martview/
+eGFP cDNA from pBS31-RBGpA plasmid https://www.addgene.org/browse/sequence/41580/
+
+4. Add transgene cDNA sequence to the transcriptome 
+cat Mus_musculus.GRCm38.cdna.all.fa cdna.txt > Mus.GRCm38.FUT3.3GALT5.eGFP.cdna.all.fa
+
+5. Install Salmon through conda
+$ conda config --add channels conda-forge
+$ conda config --add channels bioconda
+$ conda create -n salmon salmon
+
+Enter salmon environment
+$ conda activate salmon
+
+6. Build index for the transcriptome
+salmon index -t Mus.GRCm38.FUT3.3GALT5.eGFP.cdna.all.fa -i MusGRCm38CA9_index
+
+7. Quantifying the samples
+salmon quant -i /home/neil/bioinfo_tools/Reference/salmon_MusGRCm38CA9_index -l A \
+> -1 SRR9026439_1.fastq.gz -2 SRR9026439_2.fastq.gz \
+> -p 8 --validateMappings -o quants
+
+Run shell "bash salmon_CA9.sh" for all samples
+or
+#salmon_CA9_v2.sh (folder for the raw fastq) (output folder)
+bash salmon_CA9_v2.sh ~/CA9/raw_data ~/CA9/results/Salmon
+
+8. Make index for the genome
+STAR --runThreadN 16 --runMode genomeGenerate --genomeDir /home/neil/bioinfo_tools/Reference/STARindex_MusGRCm38dna_primaryassembly --genomeFastaFiles /home/neil/bioinfo_tools/Reference/Mus_musculus.GRCm38.dna.primary_assembly.fa --sjdbGTFfile /home/neil/bioinfo_tools/Reference/Mus_musculus.GRCm38.101.gtf --sjdbOverhang
+
+9. Map reads to genome
+STAR --genomeDir /home/neil/bioinfo_tools/Reference/STARindex_MusGRCm38dna_primaryassembly \
+--runThreadN 16 \
+--readFilesIn /home/neil/CA9/raw_data/SRR9026440/SRR9026440_1.fastq.gz /home/neil/CA9/raw_data/SRR9026440/SRR9026440_2.fastq.gz \
+--readFilesCommand zcat \
+--outFileNamePrefix /home/neil/CA9/results/SRR9026440 \
+--outSAMtype BAM SortedByCoordinate \
+--outSAMunmapped Within \
+--outSAMattributes Standard 
+
+
+

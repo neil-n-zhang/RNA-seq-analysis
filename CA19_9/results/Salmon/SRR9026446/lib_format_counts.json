@@ -1,0 +1,22 @@
+{
+    "read_files": "[ /home/neil/CA9/raw_data/SRR9026446/SRR9026446_1.fastq.gz, /home/neil/CA9/raw_data/SRR9026446/SRR9026446_2.fastq.gz]",
+    "expected_format": "ISR",
+    "compatible_fragment_ratio": 1.0,
+    "num_compatible_fragments": 45998145,
+    "num_assigned_fragments": 45998145,
+    "num_frags_with_concordant_consistent_mappings": 38947024,
+    "num_frags_with_inconsistent_or_orphan_mappings": 7290533,
+    "strand_mapping_bias": 0.0000082418968481677,
+    "MSF": 0,
+    "OSF": 0,
+    "ISF": 321,
+    "MSR": 0,
+    "OSR": 0,
+    "ISR": 38947024,
+    "SF": 4103453,
+    "SR": 3186759,
+    "MU": 0,
+    "OU": 0,
+    "IU": 0,
+    "U": 0
+}
