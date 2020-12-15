@@ -68,7 +68,7 @@ ggplot(data)+
   ylab("Number of genes")
 ```
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-7-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-7-1.png)
 
 ### Gene expression variance is correlated with expression level
 
@@ -90,7 +90,7 @@ ggplot(df) +
 
     ## Warning: Removed 6691 rows containing missing values (geom_point).
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-8-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-8-1.png)
 
 ``` r
 ### Check that sample names match in both files
@@ -177,7 +177,7 @@ rld <- rlog(dds, blind=TRUE)
 plotPCA(rld, intgroup="sampletype")
 ```
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-13-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-13-1.png)
 
 ``` r
  # Input is a matrix of log transformed values
@@ -189,7 +189,7 @@ plotPCA(rld, intgroup="sampletype")
  ggplot(df) + geom_point(aes(x=PC3, y=PC4, color = sampletype))
 ```
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-14-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-14-1.png)
 
 ### Hierarchical Clustering
 
@@ -220,7 +220,7 @@ head(rld_cor)
 pheatmap(rld_cor, annotation = meta)
 ```
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-16-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-16-1.png)
 
 #### Data should be arround the fitted curve, dispersion should decrease with increasing normalized counts
 
@@ -229,7 +229,7 @@ pheatmap(rld_cor, annotation = meta)
 plotDispEsts(dds)
 ```
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-17-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-17-1.png)
 
 ### Find the differentially expressed genes between mov10 overexpression and control
 
@@ -301,13 +301,13 @@ summary(res_tableOE, alpha = 0.05)
 plotMA(res_tableOE_unshrunken, ylim=c(-2,2))
 ```
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-22-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-22-1.png)
 
 ``` r
 plotMA(res_tableOE, ylim=c(-2,2))
 ```
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-23-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-23-1.png)
 
 ``` r
 ## Define contrasts, extract results table and shrink log2 fold changes
@@ -433,7 +433,7 @@ ggplot(d, aes(x = sampletype, y = count, color = sampletype)) +
     theme(plot.title = element_text(hjust = 0.5))
 ```
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-29-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-29-1.png)
 
 ### Heatmap
 
@@ -457,7 +457,7 @@ pheatmap(norm_OEsig[2:7],
     height = 20)
 ```
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-30-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-30-1.png)
 
 ### Volcano plot
 
@@ -486,7 +486,7 @@ ggplot(res_tableOE_tb, aes(x = log2FoldChange, y = -log10(padj))) +
 
     ## Warning: Removed 40046 rows containing missing values (geom_text_repel).
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-32-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-32-1.png)
 
 ### Likelihood ratio test (LRT): evaluate expression change across more than two conditions
 
@@ -578,7 +578,7 @@ clusters <- degPatterns(cluster_rlog, metadata = meta, time = "sampletype", col=
     ## Joining, by = "merge"
     ## Joining, by = "merge"
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-35-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-35-1.png)
 
 ``` r
 # What type of data structure is the `clusters` output?
@@ -663,7 +663,7 @@ dotplot(ego, showCategory=20)
 
     ## wrong orderBy parameter; set to default `orderBy = "x"`
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-40-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-40-1.png)
 
 ### Gene set enrichment analysis: using foldchange of all genes within the predifined gene set, rather than only the significant genes as in GO enrichment analysis
 
@@ -699,6 +699,9 @@ gseaKEGG <- gseKEGG(geneList = foldchanges, # ordered named vector of fold chang
     ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize, gseaParam, : There are ties in the preranked stats (7.33% of the list).
     ## The order of those tied genes will be arbitrary, which may produce unexpected results.
 
+    ## Warning in fgseaMultilevel(...): For some pathways, in reality P-values are less
+    ## than 1e-10. You can set the `eps` argument to zero for better estimation.
+
 ``` r
 ## Extract the GSEA results
 gseaKEGG_results <- gseaKEGG@result
@@ -710,7 +713,7 @@ gseaKEGG_results <- gseaKEGG@result
 gseaplot(gseaKEGG, geneSetID = 'hsa03013')
 ```
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-43-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-43-1.png)
 
 ## Check the correlation between RNA-seq result and iCLIP-seq result
 
@@ -769,4 +772,4 @@ p2=ggplot(iclip_pc, aes(x="", y=percentage, fill=change))+geom_bar(width = 1, st
 grid.arrange(p1, p2, ncol=2)
 ```
 
-![](mov10_deg_files/figure-markdown_github/unnamed-chunk-46-1.png)
+![](result_mov10_deg_files/figure-markdown_github/unnamed-chunk-46-1.png)
